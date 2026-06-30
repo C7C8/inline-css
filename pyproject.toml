@@ -3,4 +3,8 @@ name = "inline-css"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "cssselect>=1.4.0",
+    "cssutils>=2.15.0",
+    "lxml>=6.1.1",
+]
