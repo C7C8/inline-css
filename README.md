@@ -23,6 +23,29 @@ The result would be:
 </div>
 ```
 
+## Usage
+```
+usage: inline-css [-h] [--verbose] [--out OUT | --outdir OUTDIR | --quash]
+                  html css [css ...]
+
+Inlines CSS rules within stylesheets and applies them to HTML files
+
+positional arguments:
+  html                  Source HTML file
+  css                   Source CSS files
+
+options:
+  -h, --help            show this help message and exit
+  --verbose, -v         Enable verbose output
+  --out OUT, -o OUT     File to write HTML output to. Will be overwritten if
+                        it already exists.
+  --outdir OUTDIR, -d OUTDIR
+                        Directory to write HTML output to. Filename will be
+                        same as the source file.
+  --quash               Overwrite the original HTML file with the inlined
+                        output. Very dangerous!
+```
+
 ## *Why?*
 
 If you don't know why you'd need this, you don't need this.
