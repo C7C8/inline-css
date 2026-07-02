@@ -16,44 +16,49 @@
 import argparse
 import logging
 import pathlib
-from typing import List
+from typing import List, Any
 
-import cssutils
-from cssutils.css import CSSStyleSheet
 from lxml import etree
 from lxml.etree import ElementTree
+from tinycss2 import parse_stylesheet
+from tinycss2.ast import QualifiedRule, AtRule
 
 log = logging.getLogger(__name__)
 
 
-def inline_css_from_files(html: pathlib.Path, css_files: List[pathlib.Path]) -> str:
+def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]) -> str:
     """
     Inline CSS stylesheet rules in an HTML document. Wrapper for `inline_css()`
     :param html: Path to an HTML document
-    :param css_files: Paths to CSS files
+    :param css_file_paths: Paths to CSS files
     :return: HTML with CSS styles inlined.
     """
 
     log.debug("Validating & parsing HTML input file '%s'", html)
     try:
+        # noinspection PyTypeChecker
         html_root = etree.parse(html, parser=etree.HTMLParser())
     except:
         log.exception("Failed to parse HTML file '%s': ", html)
         raise
 
-    css_parsed: List[CSSStyleSheet] = []
-    for css_file in css_files:
+    css_parsed: list[QualifiedRule | AtRule] = []
+    for css_file_path in css_file_paths:
         try:
-            log.debug("Parsing and validating CSS style sheet '%s'", css_file)
-            css_parsed.append(cssutils.parseFile(css_file))
+            log.debug("Parsing and validating CSS style sheet '%s'", css_file_path)
+            with open(css_file_path, "r") as css_file:
+                css_parsed.extend(parse_stylesheet(css_file.read(), skip_comments=True, skip_whitespace=True))
         except:
-            log.exception("Failed to parse HTML file '%s'", css_file)
+            log.exception("Failed to parse HTML file '%s'", css_file_path)
             raise
 
+    # This normally throws a warning because WhitespaceToken and CommentToken can be present, but setting skip_comments
+    # and skip_whitespace to false above stops those from ever being emitted. Hence, typechecker is wrong here.
+    #noinspection PyTypeChecker
     return etree.tostring(inline_css(html_root, css_parsed))
 
 
-def inline_css(html: ElementTree, css_sheets: List[CSSStyleSheet]) -> ElementTree:
+def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> ElementTree:
     """
     Inline CSS stylesheet rules in an HTML document. Accepts lxml ElementTrees and cssutils CSSStyleSheet objects.
     :param html: Parsed HTML ElementTree
