@@ -16,12 +16,15 @@
 import argparse
 import logging
 import pathlib
-from typing import List, Any
+from typing import List, Any, Dict, Tuple, NamedTuple
 
+import lxml
+from cssselect import HTMLTranslator, SelectorError
 from lxml import etree
 from lxml.etree import ElementTree
-from tinycss2 import parse_stylesheet
-from tinycss2.ast import QualifiedRule, AtRule
+from src import SpecificityCalculator, Specificity
+from tinycss2 import parse_stylesheet, parse_blocks_contents
+from tinycss2.ast import QualifiedRule, AtRule, Declaration, WhitespaceToken, HashToken
 
 log = logging.getLogger(__name__)
 
@@ -57,14 +60,46 @@ def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]
     #noinspection PyTypeChecker
     return etree.tostring(inline_css(html_root, css_parsed))
 
+class _DeclarationsAndSpecificity(NamedTuple):
+    declarations: List[str]
+    specificity: Specificity
 
 def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> ElementTree:
     """
     Inline CSS stylesheet rules in an HTML document. Accepts lxml ElementTrees and cssutils CSSStyleSheet objects.
     :param html: Parsed HTML ElementTree
-    :param css_sheets: Parsed CSS style sheets
+    :param rules: List of rules in CSS, either QualifiedRule or AtRule (or any combination thereof)
     :return HTML ElementTree with styles inlined.
     """
+    # HLD: This works by first identifying all rules that could apply to an element, then applying those rules in
+    # appropriate order based on their CSS specificity. All styled elements have to be identified first in order to
+    # build up an appropriate sorting order for specificity.
+
+    # Part 1: For every CSS declaration, find the matching elements and build up a dictionary of them to the list of
+    # rules that could apply to them, plus their specificity.
+    el_declaration_mappings: Dict[lxml.etree.Element, List[_DeclarationsAndSpecificity]] = {}
+    selector_translator = HTMLTranslator()
+    for rule in rules:
+        declarations = list(map(lambda declaration: declaration.serialize(), parse_blocks_contents(rule.content, skip_comments=True, skip_whitespace=True)))
+        selector = rule.serialize().split("{")[0].strip()
+
+        try:
+            xpath = selector_translator.css_to_xpath(selector)
+        except SelectorError as e:
+            # TODO add CLI option for enabling/disabling bad selector skipping
+            log.warning("Selector '%s' failed to translate to xpath and is SKIPPED", selector, exc_info=e)
+            continue
+        specificity = SpecificityCalculator.calculate(selector)
+        selected_elements = html.xpath(xpath)
+        log.debug("Translated CSS selector '%s', (%d matches, specificity %s) to HTML Xpath selector '%s'; ", selector, len(selected_elements), specificity, xpath)
+
+        # Apply this selector + ruleset to each element this selector matches
+        declarations_w_specificity = _DeclarationsAndSpecificity(declarations, specificity)
+        for element in selected_elements:
+            if element not in el_declaration_mappings:
+                el_declaration_mappings[element] = []
+            el_declaration_mappings[element].append(declarations_w_specificity)
+
     return html
 
 
