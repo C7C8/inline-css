@@ -1,6 +1,11 @@
 [project]
 name = "inline-css"
 version = "0.1.0"
-description = "Add your description here"
+description = "Library and CLI application for inlining CSS rules from a set of stylesheets and applying them to an HTML file using `style` attributes."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "css-specificity>=0.1.3",
+    "cssselect>=1.4.0",
+    "lxml>=6.1.1",
+    "tinycss2>=1.5.1",
+]
