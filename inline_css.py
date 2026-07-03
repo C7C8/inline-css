@@ -16,9 +16,9 @@
 import argparse
 import logging
 import pathlib
-from functools import cmp_to_key
 from operator import attrgetter
-from typing import List, Any, Dict, Tuple, NamedTuple
+import sys
+from typing import List, Dict, NamedTuple
 
 import lxml
 from cssselect import HTMLTranslator, SelectorError
@@ -26,14 +26,20 @@ from lxml import etree
 from lxml.etree import ElementTree
 from src import SpecificityCalculator, Specificity
 from tinycss2 import parse_stylesheet, parse_blocks_contents
-from tinycss2.ast import QualifiedRule, AtRule, Declaration, WhitespaceToken, HashToken
+from tinycss2.ast import QualifiedRule, AtRule
 
 log = logging.getLogger(__name__)
+
+def path_exists(input: str):
+    path = pathlib.Path(input)
+    if path.exists():
+        return path
+    else:
+        raise argparse.ArgumentTypeError(f"Path '{path}' does not exist")
 
 class _DeclarationsAndSpecificity(NamedTuple):
     declarations: Dict[str, str]
     specificity: Specificity
-
 
 def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]) -> str:
     """
@@ -65,7 +71,6 @@ def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]
     # and skip_whitespace to false above stops those from ever being emitted. Hence, typechecker is wrong here.
     #noinspection PyTypeChecker
     return etree.tostring(inline_css(html_root, css_parsed), pretty_print=True).decode()
-
 
 def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> ElementTree:
     """
@@ -140,19 +145,51 @@ if __name__ == '__main__':
         description="Inlines CSS rules within stylesheets and applies them to HTML files"
     )
     parser.add_argument("--verbose", "-v",action="store_true", help="Enable verbose output")
-    parser.add_argument("html", type=pathlib.Path, help="Source HTML file")
-    parser.add_argument("css", type=pathlib.Path, nargs="+", help="Source CSS files")
+    parser.add_argument("html", type=path_exists, help="Source HTML file")
+    parser.add_argument("css", type=path_exists, nargs="+", help="Source CSS files")
 
-    output_group = parser.add_mutually_exclusive_group()
+    output_group = parser.add_argument_group(
+        "Output",
+        "Chosen output option. If none is set, the default is to write prettyprinted HTML to STDOUT",
+    )
+    output_group = output_group.add_mutually_exclusive_group(required=False)
     output_group.add_argument("--out", "-o", type=argparse.FileType("w"), help="File to write HTML output to. Will be overwritten if it already exists.")
-    output_group.add_argument("--outdir", "-d", type=pathlib.Path, help="Directory to write HTML output to. Filename will be same as the source file.")
+    output_group.add_argument("--outdir", "-d", type=path_exists, help="Directory to write HTML output to. Filename will be same as the source file.")
     output_group.add_argument("--quash", action="store_true", help="Overwrite the original HTML file with the inlined output. Very dangerous!")
-
     args = parser.parse_args()
 
+    # Logging setup
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.WARNING)
 
-    print(inline_css_from_files(args.html, args.css))
+    # Actually Do The Thing. Exposed as a function instead of inline so this can be used as a library.
+    result = inline_css_from_files(args.html, args.css)
+
+    if args.out is not None:
+        # Write a file out
+        log.debug("Writing %d lines out to %s", len(result.split("\n")), args.out.name)
+        args.out.write(result)
+
+    elif args.outdir:
+        # Write to a directory by the same filename
+        path = args.outdir / args.html.name
+        log.debug("Writing %d lines out to %s", len(result.split("\n")), path)
+        with open(path, "w") as file:
+            file.write(result)
+
+    elif args.quash:
+        # Write to the original input HTML file.
+        log.warning("Writing %d lines out to %s; OVERWRITING INPUT FILE!", len(result.split("\n")), args.html)
+
+        # Flash a warning if this is an interactive usage / not scripted.
+        if sys.stdin and sys.stdin.isatty():
+            input(f"You are about to overwrite input file {args.html}; are you sure you want to do this? Press CTRL-C to kill if not, otherwise press any key...")
+
+        with open(args.html, "w") as file:
+            file.write(result)
+
+    else:
+        # Write to STDOUT (default)
+        print(inline_css_from_files(args.html, args.css))
