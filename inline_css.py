@@ -16,6 +16,8 @@
 import argparse
 import logging
 import pathlib
+from functools import cmp_to_key
+from operator import attrgetter
 from typing import List, Any, Dict, Tuple, NamedTuple
 
 import lxml
@@ -27,6 +29,10 @@ from tinycss2 import parse_stylesheet, parse_blocks_contents
 from tinycss2.ast import QualifiedRule, AtRule, Declaration, WhitespaceToken, HashToken
 
 log = logging.getLogger(__name__)
+
+class _DeclarationsAndSpecificity(NamedTuple):
+    declarations: Dict[str, str]
+    specificity: Specificity
 
 
 def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]) -> str:
@@ -58,11 +64,8 @@ def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]
     # This normally throws a warning because WhitespaceToken and CommentToken can be present, but setting skip_comments
     # and skip_whitespace to false above stops those from ever being emitted. Hence, typechecker is wrong here.
     #noinspection PyTypeChecker
-    return etree.tostring(inline_css(html_root, css_parsed))
+    return etree.tostring(inline_css(html_root, css_parsed), pretty_print=True).decode()
 
-class _DeclarationsAndSpecificity(NamedTuple):
-    declarations: List[str]
-    specificity: Specificity
 
 def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> ElementTree:
     """
@@ -80,8 +83,17 @@ def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> Elemen
     el_declaration_mappings: Dict[lxml.etree.Element, List[_DeclarationsAndSpecificity]] = {}
     selector_translator = HTMLTranslator()
     for rule in rules:
-        declarations = list(map(lambda declaration: declaration.serialize(), parse_blocks_contents(rule.content, skip_comments=True, skip_whitespace=True)))
         selector = rule.serialize().split("{")[0].strip()
+
+        # Map out declarations properly into a dictionary. This will be used later when calculating style rules.
+        declarations: Dict[str, str] = {
+            declaration_raw.name: declaration_raw.serialize().removeprefix(f"{declaration_raw.name}:").strip()
+            for declaration_raw in parse_blocks_contents(rule.content, skip_comments=True, skip_whitespace=True)
+        }
+
+        # Check for #important; we have no way to handle this at the moment.
+        if any(map(lambda value: "!important" in value, declarations.values())):
+            log.warning("Selector '%s' contains a !important rule; these are not respected!")
 
         try:
             xpath = selector_translator.css_to_xpath(selector)
@@ -91,7 +103,7 @@ def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> Elemen
             continue
         specificity = SpecificityCalculator.calculate(selector)
         selected_elements = html.xpath(xpath)
-        log.debug("Translated CSS selector '%s', (%d matches, specificity %s) to HTML Xpath selector '%s'; ", selector, len(selected_elements), specificity, xpath)
+        log.debug("Translated CSS selector '%s', (%d matches, specificity %s) to HTML Xpath selector '%s'", selector, len(selected_elements), specificity, xpath)
 
         # Apply this selector + ruleset to each element this selector matches
         declarations_w_specificity = _DeclarationsAndSpecificity(declarations, specificity)
@@ -99,6 +111,25 @@ def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> Elemen
             if element not in el_declaration_mappings:
                 el_declaration_mappings[element] = []
             el_declaration_mappings[element].append(declarations_w_specificity)
+
+    log.debug("CSS selection pass finished, identified %d element-to-declaration mappings. Applying styles...", len(el_declaration_mappings))
+
+    # Part 2: For each element, sort the list of declarations by CSS specificity. Then, apply each set of rules to the
+    # HTML element's `style` attribute.
+    for element, declarations_for_element in el_declaration_mappings.items():
+        declarations_for_element.sort(key=attrgetter("specificity"))
+
+        # This bit of magic condenses all styles in the list of declarations into a set with no duplicates. Since higher
+        # ranking declarations are last in declarations_for_element, the final outcome has the styles from the most
+        # specific CSS selectors taking priority. Neato!
+        style_dict: Dict[str, str] = {}
+        for declaration in declarations_for_element:
+            style_dict.update(declaration.declarations)
+
+        # Assemble and format the final style string to be applied to our element
+        style_str = "; ".join(list(map(lambda item: f"{item[0]}: {item[1]}", style_dict.items())))
+        log.debug("Applying style '%s' to element '%s'", style_str, element.tag)
+        element.attrib["style"] = style_str
 
     return html
 

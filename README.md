@@ -46,6 +46,11 @@ options:
                         output. Very dangerous!
 ```
 
+## Limitations
+
+* `!important` is not currently respected. Occurrences of `!important` are detected and logged as warnings.
+* Existing `style` attributes on HTML tags are quashed by CSS rules.
+
 ## *Why?*
 
 If you don't know why you'd need this, you don't need this.
