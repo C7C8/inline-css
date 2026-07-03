@@ -70,5 +70,5 @@ Other limitations:
 
 If you don't know why you'd need this, you don't need this.
 
-*(There are some content platforms allow custom HTML but don't allow custom stylesheets, despite requiring styling to
+*(There are some content platforms that allow custom HTML but don't allow custom stylesheets, despite requiring styling to
 be viable. This is to make life easier for content creators on those platforms.)*
