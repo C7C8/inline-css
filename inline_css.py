@@ -16,8 +16,8 @@
 import argparse
 import logging
 import pathlib
-from operator import attrgetter
 import sys
+from operator import attrgetter
 from typing import List, Dict, NamedTuple
 
 import lxml
@@ -30,6 +30,7 @@ from tinycss2.ast import QualifiedRule, AtRule
 
 log = logging.getLogger(__name__)
 
+
 def path_exists(input: str):
     path = pathlib.Path(input)
     if path.exists():
@@ -37,9 +38,11 @@ def path_exists(input: str):
     else:
         raise argparse.ArgumentTypeError(f"Path '{path}' does not exist")
 
+
 class _DeclarationsAndSpecificity(NamedTuple):
     declarations: Dict[str, str]
     specificity: Specificity
+
 
 def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]) -> str:
     """
@@ -69,8 +72,9 @@ def inline_css_from_files(html: pathlib.Path, css_file_paths: List[pathlib.Path]
 
     # This normally throws a warning because WhitespaceToken and CommentToken can be present, but setting skip_comments
     # and skip_whitespace to false above stops those from ever being emitted. Hence, typechecker is wrong here.
-    #noinspection PyTypeChecker
+    # noinspection PyTypeChecker
     return etree.tostring(inline_css(html_root, css_parsed), pretty_print=True).decode()
+
 
 def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> ElementTree:
     """
@@ -108,7 +112,8 @@ def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> Elemen
             continue
         specificity = SpecificityCalculator.calculate(selector)
         selected_elements = html.xpath(xpath)
-        log.debug("Translated CSS selector '%s', (%d matches, specificity %s) to HTML Xpath selector '%s'", selector, len(selected_elements), specificity, xpath)
+        log.debug("Translated CSS selector '%s', (%d matches, specificity %s) to HTML Xpath selector '%s'", selector,
+                  len(selected_elements), specificity, xpath)
 
         # Apply this selector + ruleset to each element this selector matches
         declarations_w_specificity = _DeclarationsAndSpecificity(declarations, specificity)
@@ -117,7 +122,8 @@ def inline_css(html: ElementTree, rules: List[QualifiedRule | AtRule]) -> Elemen
                 el_declaration_mappings[element] = []
             el_declaration_mappings[element].append(declarations_w_specificity)
 
-    log.debug("CSS selection pass finished, identified %d element-to-declaration mappings. Applying styles...", len(el_declaration_mappings))
+    log.debug("CSS selection pass finished, identified %d element-to-declaration mappings. Applying styles...",
+              len(el_declaration_mappings))
 
     # Part 2: For each element, sort the list of declarations by CSS specificity. Then, apply each set of rules to the
     # HTML element's `style` attribute.
@@ -144,7 +150,7 @@ if __name__ == '__main__':
         prog="inline-css",
         description="Inlines CSS rules within stylesheets and applies them to HTML files"
     )
-    parser.add_argument("--verbose", "-v",action="store_true", help="Enable verbose output")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     parser.add_argument("html", type=path_exists, help="Source HTML file")
     parser.add_argument("css", type=path_exists, nargs="+", help="Source CSS files")
 
@@ -153,9 +159,12 @@ if __name__ == '__main__':
         "Chosen output option. If none is set, the default is to write prettyprinted HTML to STDOUT",
     )
     output_group = output_group.add_mutually_exclusive_group(required=False)
-    output_group.add_argument("--out", "-o", type=argparse.FileType("w"), help="File to write HTML output to. Will be overwritten if it already exists.")
-    output_group.add_argument("--outdir", "-d", type=path_exists, help="Directory to write HTML output to. Filename will be same as the source file.")
-    output_group.add_argument("--quash", action="store_true", help="Overwrite the original HTML file with the inlined output. Very dangerous!")
+    output_group.add_argument("--out", "-o", type=argparse.FileType("w"),
+                              help="File to write HTML output to. Will be overwritten if it already exists.")
+    output_group.add_argument("--outdir", "-d", type=path_exists,
+                              help="Directory to write HTML output to. Filename will be same as the source file.")
+    output_group.add_argument("--quash", action="store_true",
+                              help="Overwrite the original HTML file with the inlined output. Very dangerous!")
     args = parser.parse_args()
 
     # Logging setup
@@ -185,7 +194,8 @@ if __name__ == '__main__':
 
         # Flash a warning if this is an interactive usage / not scripted.
         if sys.stdin and sys.stdin.isatty():
-            input(f"You are about to overwrite input file {args.html}; are you sure you want to do this? Press CTRL-C to kill if not, otherwise press any key...")
+            input(
+                f"You are about to overwrite input file {args.html}; are you sure you want to do this? Press CTRL-C to kill if not, otherwise press any key...")
 
         with open(args.html, "w") as file:
             file.write(result)

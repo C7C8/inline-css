@@ -23,6 +23,9 @@ The result would be:
 </div>
 ```
 
+## Getting Started
+This project uses `uv`; running `uv sync` and then `uv run inline_css` ought to do it! See below for usage instructions.
+
 ## Usage
 ```
 usage: inline-css [-h] [--verbose] [--out OUT | --outdir OUTDIR | --quash]
@@ -48,8 +51,20 @@ options:
 
 ## Limitations
 
+From this library:
 * `!important` is not currently respected. Occurrences of `!important` are detected and logged as warnings.
 * Existing `style` attributes on HTML tags are quashed by CSS rules.
+
+From consequences of running outside a browser, [these selectors are accepted but never apply:](https://cssselect.readthedocs.io/en/latest/#supported-selectors)
+* `:hover`
+* `:active`
+* `:focus`
+* `:target`
+* `:visited`
+
+Other limitations:
+* [`*:first-of-type`, `*:last-of-type`, `*:nth-of-type`, `*:nth-last-of-type`, `*:only-of-type`. All of these work when you specify an element type, but not with *](https://cssselect.readthedocs.io/en/latest/#supported-selectors)
+
 
 ## *Why?*
 
